@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+firebase-admin
+pydantic
+python-dotenv
+sse-starlette
+python-dotenv
