@@ -47,3 +47,5 @@ This backend receives infrastructure reports from the mobile app, stores them in
 ```bash
 git clone https://github.com/infrawatch-hackathon/infrawatch-backend.git
 cd infrawatch-backend
+```
+## Contact Admin of the work for further Instructions.
