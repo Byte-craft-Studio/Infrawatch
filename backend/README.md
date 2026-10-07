@@ -27,4 +27,23 @@ This backend receives infrastructure reports from the mobile app, stores them in
 | Validation | Pydantic |
 | Environment | python-dotenv |
 
-## Project Structure
+
+## Data Flow
+
+1. Citizen submits report via mobile app
+2. Mobile app sends POST /report with photo + GPS + type
+3. Backend stores report in Firestore
+4. Backend broadcasts event via SSE
+5. Dashboard receives real-time update on /events stream
+6. Dashboard displays new pin on map
+7. Official updates status via PATCH /reports/{id}/status
+8. Backend broadcasts status change via SSE
+9. Dashboard updates pin color instantly
+
+## Setup
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/infrawatch-hackathon/infrawatch-backend.git
+cd infrawatch-backend
