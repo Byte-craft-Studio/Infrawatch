@@ -1,11 +1,12 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
 
 import ReportScreen from './src/screens/ReportScreen';
 import FeedScreen from './src/screens/FeedScreen';
 import MapScreen from './src/screens/MapScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import { AuthProvider, useAuth } from './src/lib/AuthContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,7 +17,18 @@ const TAB_ICONS: Record<string, string> = {
   Profile: '👤',
 };
 
-export default function App() {
+function AppTabs() {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#2c3e50" />
+        <Text style={styles.loadingText}>Setting up InfraWatch…</Text>
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -35,3 +47,16 @@ export default function App() {
     </NavigationContainer>
   );
 }
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppTabs />
+    </AuthProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
+  loadingText: { fontSize: 14, color: '#777' },
+});
