@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
+import { useNetworkStatus } from '../lib/useNetworkStatus';
+import { addToQueue, flushQueue, getQueueCount } from '../lib/offlineQueue';
 
 type Category =
   | 'pothole'
@@ -55,6 +57,7 @@ const DURATIONS: { label: string; value: Duration }[] = [
 export default function ReportScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
+  const isConnected = useNetworkStatus();
 
   const [step, setStep] = useState<Step>('camera');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -64,6 +67,29 @@ export default function ReportScreen() {
   const [duration, setDuration] = useState<Duration | null>(null);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [wasQueued, setWasQueued] = useState(false);
+  const [queueCount, setQueueCount] = useState(0);
+
+  // Refresh the queue count whenever the screen mounts, and try to flush
+  // automatically the moment connectivity comes back.
+  useEffect(() => {
+    getQueueCount().then(setQueueCount);
+  }, []);
+
+  useEffect(() => {
+    if (isConnected) {
+      (async () => {
+        const count = await getQueueCount();
+        if (count > 0) {
+          const sent = await flushQueue();
+          setQueueCount(await getQueueCount());
+          if (sent > 0) {
+            Alert.alert('Reports sent', `${sent} saved report${sent > 1 ? 's' : ''} ${sent > 1 ? 'were' : 'was'} sent now that you're back online.`);
+          }
+        }
+      })();
+    }
+  }, [isConnected]);
 
   if (!permission) {
     return (
@@ -162,12 +188,14 @@ export default function ReportScreen() {
 
     setSubmitting(true);
 
-    // Placeholder: this object matches the reports_private schema.
-    // Swap this block for a real write once Firestore is wired up.
     const report = {
       category,
       description: description.trim(),
       durationEstimate: duration,
+      // NOTE: this local file URI lives in Expo's cache, which the OS can
+      // clear under storage pressure. Fine for short offline periods;
+      // a hardened version would copy the photo into persistent document
+      // storage before queuing, so a long offline wait can't lose it.
       photoUrl: photoUri,
       location,
       ward: '',
@@ -176,10 +204,21 @@ export default function ReportScreen() {
       status: 'received',
     };
 
-    console.log('Report ready to submit:', report);
+    if (isConnected === false) {
+      // Offline: queue locally instead of attempting a submit that would fail.
+      await addToQueue(report);
+      setQueueCount(await getQueueCount());
+      setWasQueued(true);
+      setSubmitting(false);
+      setStep('success');
+      return;
+    }
 
+    // Online path — placeholder submit, same as before.
+    console.log('Report ready to submit:', report);
     await new Promise((resolve) => setTimeout(resolve, 600));
 
+    setWasQueued(false);
     setSubmitting(false);
     setStep('success');
   }
@@ -190,18 +229,21 @@ export default function ReportScreen() {
     setCategory(null);
     setDuration(null);
     setDescription('');
+    setWasQueued(false);
     setStep('camera');
   }
 
   if (step === 'success') {
     return (
       <View style={styles.center}>
-        <View style={styles.successCircle}>
-          <Text style={styles.successCheck}>✓</Text>
+        <View style={[styles.successCircle, wasQueued && styles.queuedCircle]}>
+          <Text style={styles.successCheck}>{wasQueued ? '⏳' : '✓'}</Text>
         </View>
-        <Text style={styles.title}>Report submitted</Text>
+        <Text style={styles.title}>{wasQueued ? 'Report saved' : 'Report submitted'}</Text>
         <Text style={styles.text}>
-          Thank you. Your report has been sent and will be reviewed. You can track its status from the map.
+          {wasQueued
+            ? "You're offline right now, so this report has been saved on your phone. It will be sent automatically once you're back online."
+            : 'Thank you. Your report has been sent and will be reviewed. You can track its status from the map.'}
         </Text>
         <TouchableOpacity
           style={styles.button}
@@ -218,7 +260,20 @@ export default function ReportScreen() {
   if (step === 'details' && photoUri) {
     return (
       <ScrollView contentContainerStyle={styles.form}>
-        <Text style={styles.stepIndicator}>Step 2 of 2</Text>
+        <View style={styles.statusRow}>
+          <Text style={styles.stepIndicator}>Step 2 of 2</Text>
+          {isConnected === false && (
+            <View style={styles.offlineBadge}>
+              <Text style={styles.offlineBadgeText}>Offline</Text>
+            </View>
+          )}
+        </View>
+
+        {queueCount > 0 && (
+          <Text style={styles.queueNotice}>
+            📥 {queueCount} report{queueCount > 1 ? 's' : ''} waiting to send
+          </Text>
+        )}
 
         <Image source={{ uri: photoUri }} style={styles.preview} accessibilityLabel="Photo of the reported problem" />
 
@@ -304,7 +359,9 @@ export default function ReportScreen() {
           {submitting ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Submit report</Text>
+            <Text style={styles.buttonText}>
+              {isConnected === false ? 'Save report (offline)' : 'Submit report'}
+            </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -317,6 +374,11 @@ export default function ReportScreen() {
       <View style={styles.cameraOverlay} pointerEvents="none">
         <Text style={styles.cameraCaption}>Point the camera at the problem</Text>
       </View>
+      {isConnected === false && (
+        <View style={styles.cameraOfflineBadge} pointerEvents="none">
+          <Text style={styles.offlineBadgeText}>Offline — reports will be saved and sent later</Text>
+        </View>
+      )}
       <TouchableOpacity
         style={styles.captureButton}
         onPress={takePhoto}
@@ -342,6 +404,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   cameraCaption: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  cameraOfflineBadge: {
+    position: 'absolute',
+    top: 110,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(230, 126, 34, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    maxWidth: '80%',
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 28 },
   text: { fontSize: 15, textAlign: 'center', color: '#555', lineHeight: 21, marginBottom: 20 },
   title: { fontSize: 20, fontWeight: '700', color: '#1a1a1a', marginBottom: 8, textAlign: 'center' },
@@ -364,7 +436,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#e74c3c',
   },
   form: { padding: 20, paddingTop: 20, gap: 14 },
+  statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   stepIndicator: { fontSize: 13, fontWeight: '600', color: '#888', letterSpacing: 0.5, textTransform: 'uppercase' },
+  offlineBadge: { backgroundColor: '#e67e22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  offlineBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  queueNotice: { fontSize: 12, color: '#e67e22', fontWeight: '600' },
   preview: { width: '100%', height: 260, borderRadius: 10 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 20 },
   locationText: { fontSize: 13, color: '#555' },
@@ -437,5 +513,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+  queuedCircle: { backgroundColor: '#e67e22' },
   successCheck: { color: '#fff', fontSize: 44, fontWeight: '700' },
 });

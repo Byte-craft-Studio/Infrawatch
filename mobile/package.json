@@ -10,6 +10,7 @@
     "expo": "~57.0.26",
     "expo-camera": "~57.0.6",
     "expo-location": "~57.0.20",
+    "expo-network": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "firebase": "^13.0.0",
     "react": "19.2.3",
