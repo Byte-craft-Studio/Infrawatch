@@ -8,3 +8,4 @@ __pycache__/
 *.pt
 dataset/raw/
 .DS_Store
+.vscode/
