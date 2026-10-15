@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+import uuid
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -27,9 +29,18 @@ def init_firebase():
 
 init_firebase()
 
-# Mock data store for testing
 _mock_reports = {
-    "test123": {"id": "test123", "type": "pothole", "status": "pending"}
+    "test123": {
+        "id": "test123",
+        "type": "pothole",
+        "severity": "medium",
+        "latitude": -1.5177,
+        "longitude": 37.2634,
+        "description": "Test report",
+        "photo_url": None,
+        "status": "pending",
+        "created_at": "2026-10-15T10:00:00",
+    }
 }
 
 def get_report(report_id: str):
@@ -48,3 +59,22 @@ def update_report_status(report_id: str, status: str):
         return None
     db.collection("reports").document(report_id).update({"status": status})
     return get_report(report_id)
+
+def create_report(report_data: dict):
+    report_id = str(uuid.uuid4())[:8]
+    report_data["id"] = report_id
+    report_data["status"] = "pending"
+    report_data["created_at"] = datetime.utcnow().isoformat()
+
+    if db is None:
+        _mock_reports[report_id] = report_data
+        return report_data
+
+    db.collection("reports").document(report_id).set(report_data)
+    return report_data
+
+def get_all_reports():
+    if db is None:
+        return list(_mock_reports.values())
+    docs = db.collection("reports").stream()
+    return [doc.to_dict() for doc in docs]
