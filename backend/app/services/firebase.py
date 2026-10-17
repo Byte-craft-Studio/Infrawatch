@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import pathlib
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -15,24 +16,34 @@ def init_firebase():
 
     cred_json = os.getenv("FIREBASE_CREDENTIALS")
     
-    if not cred_json:
-        print("[firebase] No credentials found. Running in mock mode.")
-        return
-
-    try:
-        # Check if it's a JSON string (from Railway) or a file path (local)
-        if cred_json.strip().startswith("{"):
+    # 1. Check if running on Railway (JSON string in Environment Variable)
+    if cred_json and cred_json.strip().startswith("{"):
+        try:
             cred_dict = json.loads(cred_json)
             cred = credentials.Certificate(cred_dict)
-        else:
-            cred = credentials.Certificate(cred_json)
-            
-        firebase_admin.initialize_app(cred)
-        db = firestore.client()
-        print("[firebase] Firebase initialized successfully.")
-    except Exception as e:
-        print(f"[firebase] Failed: {e}")
-        print("[firebase] Running in mock mode.")
+            firebase_admin.initialize_app(cred)
+            db = firestore.client()
+            print("[firebase] Firebase initialized successfully (from ENV).")
+            return
+        except Exception as e:
+            print(f"[firebase] Failed to load ENV JSON: {e}")
+
+    # 2. Check if running locally (look for the physical file)
+    BASE_DIR = pathlib.Path(__file__).parent.parent.parent
+    local_file_path = BASE_DIR / "serviceAccountKey.json"
+
+    if local_file_path.exists():
+        try:
+            cred = credentials.Certificate(str(local_file_path))
+            firebase_admin.initialize_app(cred)
+            db = firestore.client()
+            print("[firebase] Firebase initialized successfully (from Local File).")
+            return
+        except Exception as e:
+            print(f"[firebase] Failed to load Local File: {e}")
+
+    # 3. Fallback to Mock Mode
+    print("[firebase] No valid credentials found. Running in mock mode.")
 
 init_firebase()
 
