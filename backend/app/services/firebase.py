@@ -1,6 +1,7 @@
 import os
-from datetime import datetime
+import json
 import uuid
+from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -12,19 +13,25 @@ def init_firebase():
         db = firestore.client()
         return
 
-    cred_path = os.getenv("FIREBASE_CREDENTIALS", "serviceAccountKey.json")
-
-    if not os.path.exists(cred_path):
+    cred_json = os.getenv("FIREBASE_CREDENTIALS")
+    
+    if not cred_json:
         print("[firebase] No credentials found. Running in mock mode.")
         return
 
     try:
-        cred = credentials.Certificate(cred_path)
+        # Check if it's a JSON string (from Railway) or a file path (local)
+        if cred_json.strip().startswith("{"):
+            cred_dict = json.loads(cred_json)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            cred = credentials.Certificate(cred_json)
+            
         firebase_admin.initialize_app(cred)
         db = firestore.client()
-        print("[firebase] Firebase initialized.")
+        print("[firebase] Firebase initialized successfully.")
     except Exception as e:
-        print(f"[firebase] Failed to initialize: {e}")
+        print(f"[firebase] Failed: {e}")
         print("[firebase] Running in mock mode.")
 
 init_firebase()
